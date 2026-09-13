@@ -21,12 +21,30 @@ def get_products(
 ):
     query = db.query(Product)
     if search:
-        search_pattern = f"%{search}%"
-        query = query.filter(
+        search_clean = search.strip()
+        search_pattern = f"%{search_clean}%"
+        
+        # Check local DB
+        local_results = query.filter(
             (Product.name.ilike(search_pattern)) | 
             (Product.brand.ilike(search_pattern)) |
-            (Product.barcode == search)
-        )
+            (Product.barcode == search_clean)
+        ).order_by(Product.updated_at.desc()).all()
+
+        # If local results are few, perform real-time Portuguese Open Food Facts search
+        if len(local_results) < 5 and len(search_clean) >= 2:
+            product_service = ProductService(db)
+            product_service.search_external(search_clean, limit=20)
+            
+            # Re-query local DB after external search populate
+            local_results = db.query(Product).filter(
+                (Product.name.ilike(search_pattern)) | 
+                (Product.brand.ilike(search_pattern)) |
+                (Product.barcode == search_clean)
+            ).order_by(Product.updated_at.desc()).all()
+
+        return local_results
+
     if favorite is not None:
         query = query.filter(Product.favorite == favorite)
     if source:
