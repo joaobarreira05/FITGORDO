@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: #09090b;
+    color: #f4f4f5;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  input, select, textarea {
+    user-select: text;
+  }
+}

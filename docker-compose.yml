@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: fitgordo_db
+    restart: always
+    environment:
+      POSTGRES_USER: fitgordo
+      POSTGRES_PASSWORD: fitgordo_secure_password_123
+      POSTGRES_DB: fitgordo_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitgordo -d fitgordo_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fitgordo_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://fitgordo:fitgordo_secure_password_123@db:5432/fitgordo_db
+      - SECRET_KEY=FITGORDO_SUPER_SECRET_KEY_CHANGE_IN_PRODUCTION_123456789
+      - CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
