@@ -24,8 +24,15 @@ class Settings(BaseSettings):
         "https://fitgordo.vercel.app",
     ]
 
-    # External APIs
+    # Open Food Facts (gratuito, sem auth para leitura)
     OPEN_FOOD_FACTS_API_URL: str = "https://world.openfoodfacts.org/api/v2"
+    OPEN_FOOD_FACTS_PT_URL: str = "https://pt.openfoodfacts.org/api/v2"
+    OFF_RATE_LIMIT_PER_MINUTE: int = 60  # recommended limit for anonymous requests
+
+    # Nutritionix (opcional — fallback para alimentos genéricos sem barcode)
+    # Registo gratuito em: https://developer.nutritionix.com (500 queries/dia)
+    NUTRITIONIX_APP_ID: str = ""
+    NUTRITIONIX_APP_KEY: str = ""
 
     @validator("DATABASE_URL", pre=True)
     def assemble_db_connection(cls, v: str) -> str:
