@@ -2,15 +2,15 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Html5Qrcode } from 'html5-qrcode';
 import { api } from '../services/api';
-import { Product } from '../types';
-import { Camera, QrCode, AlertCircle, ArrowLeft, Search, CheckCircle2 } from 'lucide-react';
+import { Camera, AlertCircle, ArrowLeft, Search, Smartphone } from 'lucide-react';
 
 export const ScannerPage: React.FC = () => {
-  const [scanning, setScanning] = useState(true);
+  const [cameraActive, setCameraActive] = useState(false);
   const [scannedCode, setScannedCode] = useState<string | null>(null);
   const [manualCode, setManualCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const navigate = useNavigate();
 
@@ -22,13 +22,19 @@ export const ScannerPage: React.FC = () => {
   }, []);
 
   const startCameraScanner = async () => {
+    setPermissionDenied(false);
+    setErrorMsg(null);
     try {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        await scannerRef.current.stop();
+      }
+
       const html5QrCode = new Html5Qrcode("reader");
       scannerRef.current = html5QrCode;
       
       const config = {
         fps: 10,
-        qrbox: { width: 250, height: 180 },
+        qrbox: { width: 260, height: 180 },
         aspectRatio: 1.0,
       };
 
@@ -38,12 +44,13 @@ export const ScannerPage: React.FC = () => {
         (decodedText) => {
           handleBarcodeDetected(decodedText);
         },
-        () => {
-          // ignore scan errors per frame
-        }
+        () => {}
       );
-    } catch (err) {
-      console.warn("Camera access failed or unavailable:", err);
+      setCameraActive(true);
+    } catch (err: any) {
+      console.warn("Camera access failed:", err);
+      setPermissionDenied(true);
+      setCameraActive(false);
     }
   };
 
@@ -56,12 +63,12 @@ export const ScannerPage: React.FC = () => {
         console.warn("Failed to stop scanner:", e);
       }
     }
+    setCameraActive(false);
   };
 
   const handleBarcodeDetected = async (barcode: string) => {
     if (!barcode || loading) return;
     
-    // Play haptic feedback if available on iOS/Safari
     if (navigator.vibrate) {
       navigator.vibrate(100);
     }
@@ -109,15 +116,37 @@ export const ScannerPage: React.FC = () => {
         <div className="w-12"></div>
       </div>
 
+      {/* iOS Camera Permission Tip */}
+      <div className="bg-zinc-900 border border-zinc-800 p-3.5 rounded-2xl flex items-center gap-2.5 text-xs text-zinc-300">
+        <Smartphone className="w-5 h-5 text-emerald-400 shrink-0" />
+        <span>
+          <strong>Dica iOS:</strong> Instala no ecrã principal (Safari → Partilhar → Adicionar) para o iPhone memorizar a permissão da câmara para sempre.
+        </span>
+      </div>
+
       {/* Camera Viewport Box */}
       <div className="relative overflow-hidden rounded-3xl bg-zinc-900 border-2 border-emerald-500/40 shadow-2xl min-h-[300px] flex items-center justify-center">
         <div id="reader" className="w-full h-full min-h-[300px]"></div>
+
+        {permissionDenied && (
+          <div className="absolute inset-0 bg-zinc-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-3 z-20">
+            <Camera className="w-10 h-10 text-amber-400" />
+            <p className="text-sm font-bold text-white">Acesso à câmara pendente</p>
+            <p className="text-xs text-zinc-400">Por favor permite o acesso à câmara no Safari quando solicitado.</p>
+            <button
+              onClick={startCameraScanner}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs rounded-xl transition-colors"
+            >
+              Ativar Câmara
+            </button>
+          </div>
+        )}
 
         {loading && (
           <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-3 z-20">
             <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
             <p className="text-sm font-semibold text-white">A procurar produto ({scannedCode})...</p>
-            <p className="text-xs text-zinc-400">Consultando base local e Open Food Facts</p>
+            <p className="text-xs text-zinc-400">Consultando base local e Open Food Facts Portugal</p>
           </div>
         )}
       </div>

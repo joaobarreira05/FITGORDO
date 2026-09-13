@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { Meal, Product } from '../types';
-import { Plus, Utensils, Trash2, Check, ChevronRight } from 'lucide-react';
+import { Plus, Utensils, Trash2, Check, AlertTriangle } from 'lucide-react';
 
 export const MealsPage: React.FC = () => {
   const [meals, setMeals] = useState<Meal[]>([]);
@@ -10,6 +10,7 @@ export const MealsPage: React.FC = () => {
   const [addingId, setAddingId] = useState<number | null>(null);
   const [successId, setSuccessId] = useState<number | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [errorState, setErrorState] = useState<string | null>(null);
 
   // New Meal Form State
   const [mealName, setMealName] = useState('');
@@ -24,11 +25,13 @@ export const MealsPage: React.FC = () => {
 
   const loadMeals = async () => {
     setLoading(true);
+    setErrorState(null);
     try {
       const data = await api.getMeals();
-      setMeals(data);
-    } catch (err) {
+      setMeals(Array.isArray(data) ? data : []);
+    } catch (err: any) {
       console.warn('Error loading meals:', err);
+      setErrorState('Não foi possível carregar as refeições.');
     } finally {
       setLoading(false);
     }
@@ -37,7 +40,7 @@ export const MealsPage: React.FC = () => {
   const loadProducts = async () => {
     try {
       const prods = await api.getProducts();
-      setAvailableProducts(prods);
+      setAvailableProducts(Array.isArray(prods) ? prods : []);
     } catch (e) {}
   };
 
@@ -112,79 +115,90 @@ export const MealsPage: React.FC = () => {
         </button>
       </div>
 
+      {errorState && (
+        <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2 font-semibold">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>{errorState}</span>
+        </div>
+      )}
+
       {/* Meals List */}
       {loading ? (
         <div className="p-8 text-center">
           <div className="w-6 h-6 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
         </div>
-      ) : meals.length > 0 ? (
+      ) : meals && meals.length > 0 ? (
         <div className="space-y-3">
-          {meals.map((meal) => (
-            <div
-              key={meal.id}
-              className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-4 space-y-3"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                    <Utensils className="w-5 h-5" />
+          {meals.map((meal) => {
+            const items = meal?.items || [];
+            const nutrition = meal?.total_nutrition || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+            return (
+              <div
+                key={meal.id}
+                className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-4 space-y-3"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <Utensils className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">{meal?.name || 'Refeição'}</h3>
+                      <p className="text-[11px] text-zinc-400 font-mono">
+                        {items.length} ingrediente(s)
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white">{meal.name}</h3>
-                    <p className="text-[11px] text-zinc-400 font-mono">
-                      {meal.items.length} ingrediente(s)
-                    </p>
+
+                  <button
+                    onClick={() => handleDeleteMeal(meal.id)}
+                    className="p-1.5 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Total Macros Pill */}
+                <div className="bg-zinc-950/80 p-2.5 rounded-xl flex items-center justify-between text-xs font-mono">
+                  <span className="text-amber-400 font-bold">
+                    {nutrition.calories ?? 0} <span className="text-[10px] font-normal text-zinc-400">kcal</span>
+                  </span>
+                  <div className="flex gap-2 text-[11px]">
+                    <span className="text-blue-400">P: {nutrition.protein ?? 0}g</span>
+                    <span className="text-emerald-400">H: {nutrition.carbs ?? 0}g</span>
+                    <span className="text-purple-400">G: {nutrition.fat ?? 0}g</span>
                   </div>
                 </div>
 
+                {/* Ingredients List */}
+                <div className="divide-y divide-zinc-800/40 text-xs text-zinc-400 pt-1">
+                  {items.map((it) => (
+                    <div key={it.id || Math.random()} className="py-1 flex justify-between">
+                      <span className="truncate pr-2">{it?.product?.name || 'Alimento'}</span>
+                      <strong className="text-zinc-200 font-mono shrink-0">{it?.quantity || 100} {it?.unit || 'g'}</strong>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add Meal to Diary Action */}
                 <button
-                  onClick={() => handleDeleteMeal(meal.id)}
-                  className="p-1.5 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors"
+                  onClick={() => handleAddMealToDiary(meal.id)}
+                  disabled={addingId === meal.id || successId === meal.id}
+                  className="w-full py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  {successId === meal.id ? (
+                    <>
+                      <Check className="w-4 h-4" /> Refeição Adicionada!
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" /> Adicionar Refeição ao Diário
+                    </>
+                  )}
                 </button>
               </div>
-
-              {/* Total Macros Pill */}
-              <div className="bg-zinc-950/80 p-2.5 rounded-xl flex items-center justify-between text-xs font-mono">
-                <span className="text-amber-400 font-bold">
-                  {meal.total_nutrition.calories ?? 0} <span className="text-[10px] font-normal text-zinc-400">kcal</span>
-                </span>
-                <div className="flex gap-2 text-[11px]">
-                  <span className="text-blue-400">P: {meal.total_nutrition.protein ?? 0}g</span>
-                  <span className="text-emerald-400">H: {meal.total_nutrition.carbs ?? 0}g</span>
-                  <span className="text-purple-400">G: {meal.total_nutrition.fat ?? 0}g</span>
-                </div>
-              </div>
-
-              {/* Ingredients List */}
-              <div className="divide-y divide-zinc-800/40 text-xs text-zinc-400 pt-1">
-                {meal.items.map((it) => (
-                  <div key={it.id} className="py-1 flex justify-between">
-                    <span className="truncate pr-2">{it.product.name}</span>
-                    <strong className="text-zinc-200 font-mono shrink-0">{it.quantity} {it.unit}</strong>
-                  </div>
-                ))}
-              </div>
-
-              {/* Add Meal to Diary Action */}
-              <button
-                onClick={() => handleAddMealToDiary(meal.id)}
-                disabled={addingId === meal.id || successId === meal.id}
-                className="w-full py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
-              >
-                {successId === meal.id ? (
-                  <>
-                    <Check className="w-4 h-4" /> Refeição Adicionada!
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-4 h-4" /> Adicionar Refeição ao Diário
-                  </>
-                )}
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="p-8 text-center rounded-2xl bg-zinc-900/40 border border-zinc-800/40 space-y-2">
