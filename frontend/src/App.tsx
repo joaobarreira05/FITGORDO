@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Header } from './components/layout/Header';
 import { BottomNav } from './components/layout/BottomNav';
 import { QuickAddModal } from './components/QuickAddModal';
@@ -26,8 +27,9 @@ export const App: React.FC = () => {
   };
 
   return (
-    <BrowserRouter>
-      <div className="min-h-full bg-zinc-950 text-zinc-100 flex flex-col font-sans">
+    <ErrorBoundary>
+      <BrowserRouter>
+        <div className="min-h-full bg-zinc-950 text-zinc-100 flex flex-col font-sans">
         <Header onOpenQuickAdd={() => handleOpenQuickAdd()} />
 
         <main className="flex-1 max-w-md w-full mx-auto px-4 pt-4">
@@ -55,6 +57,7 @@ export const App: React.FC = () => {
         />
       </div>
     </BrowserRouter>
+  </ErrorBoundary>
   );
 };
 
