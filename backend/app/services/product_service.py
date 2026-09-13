@@ -17,7 +17,7 @@ class ProductService:
 
     def get_by_barcode(self, barcode: str) -> Optional[Product]:
         """
-        1. Check local DB first.
+        1. Check local DB first with barcode digit variations.
         2. If found, return local Product.
         3. If not found, fetch from Open Food Facts API (Portuguese domain first, then global).
         4. Normalize fields, save to DB, and return.
@@ -25,30 +25,44 @@ class ProductService:
         clean_barcode = barcode.strip()
         if not clean_barcode:
             return None
+
+        # Generate barcode variations (e.g. padded zeros, stripped zeros, EAN13 vs UPC)
+        variations = [clean_barcode]
+        if clean_barcode.startswith("0"):
+            variations.append(clean_barcode.lstrip("0"))
+        if clean_barcode.isdigit() and len(clean_barcode) < 13:
+            variations.append(clean_barcode.zfill(13))
+
+        seen_bcs = set()
         
-        # 1 & 2. Search local DB
-        local_product = self.db.query(Product).filter(Product.barcode == clean_barcode).first()
-        if local_product:
-            logger.info(f"Product with barcode {clean_barcode} found in local DB.")
-            return local_product
+        # 1 & 2. Search local DB with variations
+        for var in variations:
+            if var in seen_bcs:
+                continue
+            seen_bcs.add(var)
+            local_product = self.db.query(Product).filter(Product.barcode == var).first()
+            if local_product:
+                logger.info(f"Product with barcode {var} found in local DB.")
+                return local_product
 
-        # 3. Fetch from Open Food Facts API (PT first, then World)
+        # 3. Fetch from Open Food Facts API with variations
         logger.info(f"Barcode {clean_barcode} not in DB. Querying Open Food Facts API...")
-        urls_to_try = [
-            f"https://pt.openfoodfacts.org/api/v2/product/{clean_barcode}.json",
-            f"https://world.openfoodfacts.org/api/v2/product/{clean_barcode}.json"
-        ]
+        for var in variations:
+            urls_to_try = [
+                f"https://pt.openfoodfacts.org/api/v2/product/{var}.json",
+                f"https://world.openfoodfacts.org/api/v2/product/{var}.json"
+            ]
 
-        for url in urls_to_try:
-            try:
-                response = httpx.get(url, headers=HEADERS, follow_redirects=True, timeout=8.0)
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("status") == 1 and "product" in data:
-                        off_product = data["product"]
-                        return self._create_product_from_off(clean_barcode, off_product)
-            except Exception as e:
-                logger.error(f"Error fetching product from {url}: {e}")
+            for url in urls_to_try:
+                try:
+                    response = httpx.get(url, headers=HEADERS, follow_redirects=True, timeout=8.0)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get("status") == 1 and "product" in data:
+                            off_product = data["product"]
+                            return self._create_product_from_off(var, off_product)
+                except Exception as e:
+                    logger.error(f"Error fetching product from {url}: {e}")
 
         return None
 

@@ -4,11 +4,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import engine, Base, SessionLocal
+from app.core.seed import seed_portuguese_staples
 from app.api.v1.router import api_router
 
 # Create database tables automatically on startup if using simple sqlite or direct setup
 Base.metadata.create_all(bind=engine)
+
+# Seed Portuguese supermarket staples
+try:
+    with SessionLocal() as db_session:
+        seed_portuguese_staples(db_session)
+except Exception as e:
+    print(f"Seeding warning: {e}")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
