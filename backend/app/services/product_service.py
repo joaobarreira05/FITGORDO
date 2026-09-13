@@ -1,11 +1,15 @@
 import logging
+import urllib.parse
 import httpx
 from typing import Optional, List
 from sqlalchemy.orm import Session
 from app.models.all_models import Product
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+HEADERS = {
+    "User-Agent": "FITGORDO - Android/iOS App - Version 1.0 - www.fitgordo.com"
+}
 
 class ProductService:
     def __init__(self, db: Session):
@@ -19,6 +23,8 @@ class ProductService:
         4. Normalize fields, save to DB, and return.
         """
         clean_barcode = barcode.strip()
+        if not clean_barcode:
+            return None
         
         # 1 & 2. Search local DB
         local_product = self.db.query(Product).filter(Product.barcode == clean_barcode).first()
@@ -35,7 +41,7 @@ class ProductService:
 
         for url in urls_to_try:
             try:
-                response = httpx.get(url, timeout=5.0, headers={"User-Agent": "FITGORDO - PWA Diet Tracker PT"})
+                response = httpx.get(url, headers=HEADERS, follow_redirects=True, timeout=8.0)
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("status") == 1 and "product" in data:
@@ -48,45 +54,83 @@ class ProductService:
 
     def search_external(self, query_str: str, limit: int = 20) -> List[Product]:
         """
-        Queries Open Food Facts Portugal search endpoint for text queries (e.g. 'Pingo Doce', 'Continente', 'Mercadona', 'Iogurte').
+        Queries Open Food Facts for text queries (e.g. 'iogurte natural', 'Pingo Doce', 'Continente', 'Mercadona').
+        Encodes query properly, uses dual search endpoint fallback, and handles redirects.
         Saves missing results to local DB so subsequent searches are instant.
         """
         clean_query = query_str.strip()
         if not clean_query or len(clean_query) < 2:
             return []
 
-        search_urls = [
-            f"https://pt.openfoodfacts.org/cgi/search.pl?search_terms={clean_query}&search_simple=1&action=process&json=1&page_size={limit}&lc=pt",
-            f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={clean_query}&search_simple=1&action=process&json=1&page_size={limit}&lc=pt"
-        ]
+        # Generate candidate search terms (full query + stripped combinations if long)
+        candidates = [clean_query]
+        words = clean_query.split()
+        if len(words) > 2:
+            candidates.append(f"{words[0]} {words[-1]}")
+            candidates.append(f"{words[0]} {words[1]}")
 
         fetched_products: List[Product] = []
+        seen_barcodes = set()
 
-        for search_url in search_urls:
-            try:
-                response = httpx.get(search_url, timeout=6.0, headers={"User-Agent": "FITGORDO - PWA Diet Tracker PT"})
-                if response.status_code == 200:
-                    data = response.json()
-                    products_list = data.get("products", [])
-                    for off_p in products_list:
-                        bc = off_p.get("code")
-                        if not bc:
-                            continue
-                        
-                        # Check if already exists in DB
-                        existing = self.db.query(Product).filter((Product.barcode == bc) | (Product.name == off_p.get("product_name"))).first()
-                        if existing:
-                            if existing not in fetched_products:
-                                fetched_products.append(existing)
-                        else:
-                            new_p = self._create_product_from_off(bc, off_p)
-                            if new_p and new_p not in fetched_products:
-                                fetched_products.append(new_p)
-                    
-                    if fetched_products:
-                        break
-            except Exception as e:
-                logger.error(f"Error executing external search for query '{clean_query}' on {search_url}: {e}")
+        for cand in candidates:
+            encoded_q = urllib.parse.quote(cand)
+
+            # Strategy 1: Open Food Facts cgi search.pl
+            urls = [
+                f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={encoded_q}&search_simple=1&action=process&json=1&page_size={limit}",
+                f"https://pt.openfoodfacts.org/cgi/search.pl?search_terms={encoded_q}&search_simple=1&action=process&json=1&page_size={limit}"
+            ]
+
+            for search_url in urls:
+                try:
+                    response = httpx.get(search_url, headers=HEADERS, follow_redirects=True, timeout=8.0)
+                    if response.status_code == 200:
+                        data = response.json()
+                        products_list = data.get("products", [])
+                        for off_p in products_list:
+                            bc = off_p.get("code")
+                            if not bc or bc in seen_barcodes:
+                                continue
+                            seen_barcodes.add(bc)
+                            
+                            existing = self.db.query(Product).filter(Product.barcode == bc).first()
+                            if existing:
+                                if existing not in fetched_products:
+                                    fetched_products.append(existing)
+                            else:
+                                new_p = self._create_product_from_off(bc, off_p)
+                                if new_p and new_p not in fetched_products:
+                                    fetched_products.append(new_p)
+                except Exception as e:
+                    logger.error(f"Error searching OFF {search_url}: {e}")
+
+            # Strategy 2: Open Food Facts v2 API search if strategy 1 yielded few results
+            if len(fetched_products) < 5:
+                v2_url = f"https://world.openfoodfacts.org/api/v2/search?q={encoded_q}&page_size={limit}"
+                try:
+                    response = httpx.get(v2_url, headers=HEADERS, follow_redirects=True, timeout=8.0)
+                    if response.status_code == 200:
+                        data = response.json()
+                        products_list = data.get("products", [])
+                        for off_p in products_list:
+                            bc = off_p.get("code")
+                            if not bc or bc in seen_barcodes:
+                                continue
+                            seen_barcodes.add(bc)
+                            
+                            existing = self.db.query(Product).filter(Product.barcode == bc).first()
+                            if existing:
+                                if existing not in fetched_products:
+                                    fetched_products.append(existing)
+                            else:
+                                new_p = self._create_product_from_off(bc, off_p)
+                                if new_p and new_p not in fetched_products:
+                                    fetched_products.append(new_p)
+                except Exception as e:
+                    logger.error(f"Error searching OFF v2 {v2_url}: {e}")
+
+            if len(fetched_products) >= limit:
+                break
 
         return fetched_products
 
@@ -117,7 +161,12 @@ class ProductService:
         )
         
         brand = off_product.get("brands") or off_product.get("brand_owner") or None
-        image_url = off_product.get("image_url") or off_product.get("image_front_url") or off_product.get("image_front_small_url") or None
+        image_url = (
+            off_product.get("image_url") or
+            off_product.get("image_front_url") or
+            off_product.get("image_front_small_url") or
+            None
+        )
         category = off_product.get("categories") or None
 
         # Serving size
