@@ -10,10 +10,19 @@
     background-color: #09090b;
     color: #f4f4f5;
     -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
   }
 
+  /* Preventing iOS Safari auto-zoom on input focus */
   input, select, textarea {
     user-select: text;
+    -webkit-user-select: text;
+    font-size: 16px;
   }
 }
+
