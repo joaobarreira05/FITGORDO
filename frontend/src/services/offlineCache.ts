@@ -25,8 +25,18 @@ export const offlineCache = {
   },
 
   getProductByBarcode(barcode: string): Product | null {
+    const clean = barcode.trim();
     const products = this.getProducts();
-    return products.find(p => p.barcode === barcode) || null;
+    return products.find(p => {
+      if (!p.barcode) return false;
+      const b = p.barcode.trim();
+      return (
+        b === clean ||
+        b.replace(/^0+/, '') === clean.replace(/^0+/, '') ||
+        (clean.length < 13 && clean.padStart(13, '0') === b) ||
+        (b.length < 13 && b.padStart(13, '0') === clean)
+      );
+    }) || null;
   },
 
   getDiary(dateStr: string): DailySummary | null {

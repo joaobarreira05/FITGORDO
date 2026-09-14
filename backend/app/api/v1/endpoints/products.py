@@ -5,10 +5,11 @@ from app.core.database import get_db
 from app.models.all_models import Product, User
 from app.schemas.schemas import ProductCreate, ProductUpdate, ProductResponse
 from app.services.product_service import ProductService
-from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints.auth import get_current_user, get_current_user_optional
 
 router = APIRouter()
 
+@router.get("", response_model=List[ProductResponse], include_in_schema=False)
 @router.get("/", response_model=List[ProductResponse])
 def get_products(
     search: Optional[str] = None,
@@ -17,7 +18,7 @@ def get_products(
     limit: int = 50,
     offset: int = 0,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     query = db.query(Product)
     if search:
@@ -57,7 +58,7 @@ def get_products(
 def get_product_by_barcode(
     barcode: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     product_service = ProductService(db)
     product = product_service.get_by_barcode(barcode)
@@ -72,18 +73,19 @@ def get_product_by_barcode(
 def get_product_by_id(
     product_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Produto não encontrado.")
     return product
 
+@router.post("", response_model=ProductResponse, status_code=201, include_in_schema=False)
 @router.post("/", response_model=ProductResponse, status_code=201)
 def create_product(
     product_in: ProductCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     if product_in.barcode:
         existing = db.query(Product).filter(Product.barcode == product_in.barcode).first()

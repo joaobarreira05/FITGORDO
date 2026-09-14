@@ -113,14 +113,22 @@ def _parse_float(val) -> Optional[float]:
 
 
 def _barcode_variations(barcode: str) -> List[str]:
-    """Generate EAN-13 / UPC-A / zero-padded variants to maximise cache hits."""
+    """Generate EAN-13 / UPC-A / GTIN-14 / zero-padded variants to maximise cache hits."""
     clean = barcode.strip()
     variants = [clean]
-    if clean.startswith("0") and len(clean) == 13:
-        variants.append(clean[1:])          # EAN-13 → UPC-A (drop leading 0)
-    if clean.isdigit() and len(clean) < 13:
-        variants.append(clean.zfill(13))    # UPC-A → EAN-13
-    return list(dict.fromkeys(variants))    # deduplicate, preserve order
+    if clean.isdigit():
+        if len(clean) == 14 and clean.startswith("0"):
+            variants.append(clean[1:])       # 14-digit GTIN-14 → 13-digit EAN-13
+        if len(clean) == 13 and clean.startswith("0"):
+            variants.append(clean[1:])       # EAN-13 → UPC-A (drop leading 0)
+        if len(clean) < 13:
+            variants.append(clean.zfill(13)) # UPC-A → EAN-13
+        stripped = clean.lstrip("0")
+        if stripped:
+            variants.append(stripped)
+            if len(stripped) == 12:
+                variants.append("0" + stripped)
+    return list(dict.fromkeys(variants))     # deduplicate, preserve order
 
 
 # ─────────────────────────────────────────────

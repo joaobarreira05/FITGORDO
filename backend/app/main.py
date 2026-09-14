@@ -26,10 +26,11 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Set up CORS middleware
+# Set up CORS middleware (supports localhost, local network IPs e.g. 192.168.x.x, and web domains)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

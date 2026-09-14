@@ -5,15 +5,16 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.all_models import WeightEntry, User
 from app.schemas.schemas import WeightEntryCreate, WeightEntryResponse
-from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints.auth import get_current_user_or_default
 
 router = APIRouter()
 
+@router.get("", response_model=List[WeightEntryResponse], include_in_schema=False)
 @router.get("/", response_model=List[WeightEntryResponse])
 def get_weight_entries(
     days: int = 30,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     since_date = datetime.datetime.utcnow() - datetime.timedelta(days=days)
     entries = (
@@ -24,11 +25,12 @@ def get_weight_entries(
     )
     return entries
 
+@router.post("", response_model=WeightEntryResponse, status_code=201, include_in_schema=False)
 @router.post("/", response_model=WeightEntryResponse, status_code=201)
 def add_weight_entry(
     entry_in: WeightEntryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     recorded_time = entry_in.recorded_at or datetime.datetime.utcnow()
     entry = WeightEntry(
@@ -45,7 +47,7 @@ def add_weight_entry(
 def delete_weight_entry(
     entry_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     entry = db.query(WeightEntry).filter(WeightEntry.id == entry_id, WeightEntry.user_id == current_user.id).first()
     if not entry:

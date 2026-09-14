@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.models.all_models import FoodEntry, Product, DailyGoal, User
 from app.schemas.schemas import FoodEntryCreate, FoodEntryResponse, DailySummary, DailyGoalResponse
 from app.services.nutrition_calculator import calculate_nutrition_for_quantity
-from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints.auth import get_current_user_or_default
 
 router = APIRouter()
 
@@ -28,7 +28,7 @@ def build_food_entry_response(entry: FoodEntry) -> FoodEntryResponse:
 def get_diary_by_date(
     date_str: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     try:
         target_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -90,16 +90,17 @@ def get_diary_by_date(
 @router.get("/today", response_model=DailySummary)
 def get_today_summary(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     today_str = datetime.date.today().isoformat()
     return get_diary_by_date(today_str, db, current_user)
 
+@router.post("", response_model=FoodEntryResponse, status_code=201, include_in_schema=False)
 @router.post("/", response_model=FoodEntryResponse, status_code=201)
 def add_food_entry(
     entry_in: FoodEntryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     product = db.query(Product).filter(Product.id == entry_in.product_id).first()
     if not product:
@@ -125,7 +126,7 @@ def add_food_entry(
 def delete_food_entry(
     entry_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     entry = db.query(FoodEntry).filter(FoodEntry.id == entry_id, FoodEntry.user_id == current_user.id).first()
     if not entry:

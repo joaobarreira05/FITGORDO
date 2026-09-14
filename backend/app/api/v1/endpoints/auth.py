@@ -10,6 +10,7 @@ from app.schemas.schemas import UserCreate, UserResponse, Token
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/token")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/token", auto_error=False)
 
 def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> User:
     credentials_exception = HTTPException(
@@ -29,6 +30,51 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
     if user is None:
         raise credentials_exception
     return user
+
+def get_current_user_optional(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme_optional)) -> User | None:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            return None
+        return db.query(User).filter(User.id == int(user_id)).first()
+    except (JWTError, ValueError, TypeError):
+        return None
+
+def get_current_user_or_default(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme_optional)) -> User:
+    """
+    Returns the authenticated user if token is valid.
+    Otherwise, returns or creates the default local user so that
+    adding to diary, goals, meals, and weight works out-of-the-box for everyone.
+    """
+    if token:
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            user_id: str = payload.get("sub")
+            if user_id:
+                user = db.query(User).filter(User.id == int(user_id)).first()
+                if user:
+                    return user
+        except Exception:
+            pass
+
+    default_user = db.query(User).filter(User.email == "local@fitgordo.app").first()
+    if not default_user:
+        default_user = User(
+            email="local@fitgordo.app",
+            password_hash=get_password_hash("fitgordo_default_pass_123")
+        )
+        db.add(default_user)
+        db.commit()
+        db.refresh(default_user)
+
+        default_goal = DailyGoal(user_id=default_user.id, calories=2200.0, protein=180.0, carbs=220.0, fat=70.0)
+        db.add(default_goal)
+        db.commit()
+
+    return default_user
 
 @router.post("/register", response_model=Token)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):

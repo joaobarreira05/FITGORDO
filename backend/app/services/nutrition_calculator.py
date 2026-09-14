@@ -16,8 +16,14 @@ def calculate_nutrition_for_quantity(product: Any, quantity: float, unit: str = 
     Supports units 'g', 'ml', and 'unit' (portion).
     """
     # Determine multiplication factor relative to 100g / 100ml
-    # If unit is 'unit' (portion), convert via serving_size if present, else treat 1 portion as 1 * serving_size
-    if unit == "unit":
+    # Supports 'unit' (porção/unidade), 'fatia' / 'fatias' (fatia de pão ≈ 28g), and standard 'g' / 'ml'
+    if unit in ("fatia", "fatias"):
+        serving = getattr(product, "serving_size", None)
+        # Slices typically weigh 20g-45g, default to 28g if not specified
+        slice_weight = serving if (serving and 10.0 <= serving <= 80.0) else 28.0
+        total_grams_or_ml = quantity * slice_weight
+        factor = total_grams_or_ml / 100.0
+    elif unit == "unit":
         serving = getattr(product, "serving_size", None) or 100.0
         total_grams_or_ml = quantity * serving
         factor = total_grams_or_ml / 100.0

@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.models.all_models import Meal, MealItem, Product, FoodEntry, User
 from app.schemas.schemas import MealCreate, MealResponse, MealItemResponse, NutritionCalculation, FoodEntryResponse
 from app.services.nutrition_calculator import calculate_nutrition_for_quantity
-from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints.auth import get_current_user_or_default
 from app.api.v1.endpoints.diary import build_food_entry_response
 
 router = APIRouter()
@@ -53,10 +53,11 @@ def build_meal_response(meal: Meal) -> MealResponse:
         total_nutrition=total_nutrition
     )
 
+@router.get("", response_model=List[MealResponse], include_in_schema=False)
 @router.get("/", response_model=List[MealResponse])
 def get_user_meals(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     meals = db.query(Meal).filter(Meal.user_id == current_user.id).order_by(Meal.updated_at.desc()).all()
     return [build_meal_response(m) for m in meals]
@@ -65,18 +66,19 @@ def get_user_meals(
 def get_meal_by_id(
     meal_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     meal = db.query(Meal).filter(Meal.id == meal_id, Meal.user_id == current_user.id).first()
     if not meal:
         raise HTTPException(status_code=404, detail="Refeição guardada não encontrada.")
     return build_meal_response(meal)
 
+@router.post("", response_model=MealResponse, status_code=201, include_in_schema=False)
 @router.post("/", response_model=MealResponse, status_code=201)
 def create_meal(
     meal_in: MealCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     new_meal = Meal(user_id=current_user.id, name=meal_in.name)
     db.add(new_meal)
@@ -105,7 +107,7 @@ def add_meal_to_diary(
     meal_type: str = "Almoço",
     consumed_at: Optional[datetime.datetime] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     meal = db.query(Meal).filter(Meal.id == meal_id, Meal.user_id == current_user.id).first()
     if not meal:
@@ -134,7 +136,7 @@ def add_meal_to_diary(
 def delete_meal(
     meal_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     meal = db.query(Meal).filter(Meal.id == meal_id, Meal.user_id == current_user.id).first()
     if not meal:

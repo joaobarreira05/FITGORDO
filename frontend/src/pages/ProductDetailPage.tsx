@@ -12,9 +12,15 @@ export const ProductDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState<number>(100);
   const [unit, setUnit] = useState<string>('g');
-  const [selectedMeal, setSelectedMeal] = useState<string>('Almoço');
+  const [selectedMeal, setSelectedMeal] = useState<string>('Pequeno-almoço');
   const [adding, setAdding] = useState(false);
   const [addedSuccess, setAddedSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const isBread = /p[aã]o|forma|fatia|tosta|broa|baguete|toast/i.test(product?.name || '');
+  const sliceWeight = (product?.serving_size && product.serving_size >= 10 && product.serving_size <= 80)
+    ? product.serving_size
+    : 28;
 
   useEffect(() => {
     if (id && id !== 'new') {
@@ -27,8 +33,16 @@ export const ProductDetailPage: React.FC = () => {
     try {
       const data = await api.getProductById(productId);
       setProduct(data);
-      if (data.serving_unit) setUnit(data.serving_unit);
-      if (data.serving_size) setQuantity(data.serving_size);
+      const isBreadProduct = /p[aã]o|forma|fatia|tosta|broa|baguete|toast/i.test(data.name || '');
+      if (isBreadProduct) {
+        setUnit('fatias');
+        setQuantity(2);
+      } else if (data.serving_unit) {
+        setUnit(data.serving_unit);
+        if (data.serving_size) setQuantity(data.serving_size);
+      } else if (data.serving_size) {
+        setQuantity(data.serving_size);
+      }
     } catch (err) {
       console.warn('Error loading product:', err);
     } finally {
@@ -49,14 +63,17 @@ export const ProductDetailPage: React.FC = () => {
   const handleAddToDiary = async () => {
     if (!product) return;
     setAdding(true);
+    setErrorMessage(null);
     try {
       await api.addFoodEntry(selectedMeal, product.id, quantity, unit);
       setAddedSuccess(true);
       setTimeout(() => {
         navigate('/diary');
       }, 800);
-    } catch (err) {
-      alert('Erro ao adicionar alimento ao diário.');
+    } catch (err: any) {
+      console.error('Error adding to diary:', err);
+      const msg = err?.message || 'Erro ao adicionar alimento ao diário.';
+      setErrorMessage(msg);
     } finally {
       setAdding(false);
     }
@@ -66,7 +83,9 @@ export const ProductDetailPage: React.FC = () => {
   const calcNutrient = (valPer100: number | null | undefined): string => {
     if (valPer100 === null || valPer100 === undefined) return 'Não disponível';
     let factor = quantity / 100.0;
-    if (unit === 'unit') {
+    if (unit === 'fatia' || unit === 'fatias') {
+      factor = (quantity * sliceWeight) / 100.0;
+    } else if (unit === 'unit') {
       const serving = product?.serving_size || 100.0;
       factor = (quantity * serving) / 100.0;
     }
@@ -146,7 +165,14 @@ export const ProductDetailPage: React.FC = () => {
 
       {/* Quantity & Unit Calculator Controls */}
       <div className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-3">
-        <label className="text-xs font-bold text-zinc-300 block">Quantidade Consumida</label>
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-zinc-300">Quantidade Consumida</label>
+          {(unit === 'fatias' || unit === 'fatia' || isBread) && (
+            <span className="text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+              1 fatia ≈ {sliceWeight}g
+            </span>
+          )}
+        </div>
         
         <div className="flex gap-2">
           <input
@@ -157,30 +183,62 @@ export const ProductDetailPage: React.FC = () => {
           />
           <select
             value={unit}
-            onChange={(e) => setUnit(e.target.value)}
+            onChange={(e) => {
+              const newUnit = e.target.value;
+              setUnit(newUnit);
+              if ((newUnit === 'fatias' || newUnit === 'fatia') && quantity > 10) {
+                setQuantity(2);
+              } else if ((newUnit === 'g' || newUnit === 'ml') && quantity <= 10) {
+                setQuantity(100);
+              }
+            }}
             className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-xs font-bold text-zinc-200 focus:outline-none focus:border-emerald-500"
           >
             <option value="g">gramas (g)</option>
             <option value="ml">mililitros (ml)</option>
+            <option value="fatias">fatias ({sliceWeight}g cada)</option>
             <option value="unit">unidades</option>
           </select>
         </div>
 
         {/* Quick Quantity Chips */}
-        <div className="flex gap-2 pt-1 overflow-x-auto">
-          {[50, 100, 150, 200, 250].map((q) => (
-            <button
-              key={q}
-              onClick={() => setQuantity(q)}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors ${
-                quantity === q
-                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                  : 'bg-zinc-800 text-zinc-400 border-zinc-700/50 hover:text-white'
-              }`}
-            >
-              {q}g
-            </button>
-          ))}
+        <div className="flex items-center gap-2 pt-1 overflow-x-auto">
+          {unit === 'fatias' || unit === 'fatia' ? (
+            <>
+              {[1, 2, 3, 4, 6].map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => setQuantity(q)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap ${
+                    quantity === q
+                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                      : 'bg-zinc-800 text-zinc-400 border-zinc-700/50 hover:text-white'
+                  }`}
+                >
+                  {q} {q === 1 ? 'fatia' : 'fatias'}
+                </button>
+              ))}
+              <span className="text-[11px] text-zinc-500 ml-1 whitespace-nowrap">
+                (≈{Math.round(quantity * sliceWeight)}g)
+              </span>
+            </>
+          ) : (
+            [50, 100, 150, 200, 250].map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => setQuantity(q)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap ${
+                  quantity === q
+                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                    : 'bg-zinc-800 text-zinc-400 border-zinc-700/50 hover:text-white'
+                }`}
+              >
+                {q}{unit === 'ml' ? 'ml' : 'g'}
+              </button>
+            ))
+          )}
         </div>
       </div>
 
@@ -247,6 +305,7 @@ export const ProductDetailPage: React.FC = () => {
           {['Pequeno-almoço', 'Almoço', 'Lanche', 'Jantar', 'Snacks'].map((m) => (
             <button
               key={m}
+              type="button"
               onClick={() => setSelectedMeal(m)}
               className={`py-2 px-2 rounded-xl text-xs font-bold border transition-colors ${
                 selectedMeal === m
@@ -258,6 +317,13 @@ export const ProductDetailPage: React.FC = () => {
             </button>
           ))}
         </div>
+
+        {errorMessage && (
+          <div className="p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-red-400 text-xs flex items-center gap-2">
+            <Info className="w-4 h-4 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
 
         <button
           onClick={handleAddToDiary}

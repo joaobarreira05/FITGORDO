@@ -3,14 +3,15 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.all_models import DailyGoal, User
 from app.schemas.schemas import DailyGoalUpdate, DailyGoalResponse
-from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints.auth import get_current_user_or_default
 
 router = APIRouter()
 
+@router.get("", response_model=DailyGoalResponse, include_in_schema=False)
 @router.get("/", response_model=DailyGoalResponse)
 def get_daily_goals(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     goal = db.query(DailyGoal).filter(DailyGoal.user_id == current_user.id).first()
     if not goal:
@@ -20,11 +21,12 @@ def get_daily_goals(
         db.refresh(goal)
     return goal
 
+@router.put("", response_model=DailyGoalResponse, include_in_schema=False)
 @router.put("/", response_model=DailyGoalResponse)
 def update_daily_goals(
     goal_in: DailyGoalUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_or_default)
 ):
     goal = db.query(DailyGoal).filter(DailyGoal.user_id == current_user.id).first()
     if not goal:
