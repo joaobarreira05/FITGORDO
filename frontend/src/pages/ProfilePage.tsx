@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, getToken, clearToken } from '../services/api';
 import { User } from '../types';
-import { User as UserIcon, Share, Smartphone, Target, Scale, History, LogOut, Lock, Mail } from 'lucide-react';
+import { User as UserIcon, Share, Smartphone, Target, Scale, History, LogOut, Lock, Mail, RefreshCw } from 'lucide-react';
 
 export const ProfilePage: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -46,9 +46,28 @@ export const ProfilePage: React.FC = () => {
     setUser(null);
   };
 
+  const handleClearCacheAndReload = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) await r.unregister();
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const k of keys) await caches.delete(k);
+      }
+    } catch (e) {
+      console.warn('Cache clearing error:', e);
+    }
+    window.location.reload();
+  };
+
   return (
     <div className="space-y-4 pb-28 animate-in fade-in duration-300">
-      <h2 className="text-xl font-bold text-white tracking-tight">Perfil & Definições</h2>
+      <div>
+        <h2 className="text-2xl font-black text-white tracking-tight">Perfil & Definições</h2>
+        <p className="text-xs text-zinc-400 font-medium">Conta, objetivos e manutenção da app</p>
+      </div>
 
       {/* iPhone PWA Installation Instruction Banner */}
       <div className="bg-gradient-to-br from-emerald-950/80 to-zinc-900 border border-emerald-500/30 p-4 rounded-2xl space-y-2">
@@ -102,20 +121,18 @@ export const ProfilePage: React.FC = () => {
           </div>
 
           {errorMsg && (
-            <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-300">
-              {errorMsg}
-            </div>
+            <p className="text-xs text-red-400 font-semibold">{errorMsg}</p>
           )}
 
           <form onSubmit={handleAuthSubmit} className="space-y-3">
-            <div>
-              <label className="text-[11px] text-zinc-400 block mb-1">E-mail</label>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-400">Email</label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                <Mail className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
                 <input
                   type="email"
                   required
-                  placeholder="utilizador@fitgordo.com"
+                  placeholder="utilizador@exemplo.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500"
@@ -123,10 +140,10 @@ export const ProfilePage: React.FC = () => {
               </div>
             </div>
 
-            <div>
-              <label className="text-[11px] text-zinc-400 block mb-1">Password</label>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-400">Palavra-passe</label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+                <Lock className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
                 <input
                   type="password"
                   required
@@ -183,6 +200,21 @@ export const ProfilePage: React.FC = () => {
           </div>
           <span className="text-zinc-500 font-normal">Evolução</span>
         </button>
+      </div>
+
+      {/* App Cache & Update Button */}
+      <div className="pt-1">
+        <button
+          type="button"
+          onClick={handleClearCacheAndReload}
+          className="w-full py-3 bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-emerald-400 border border-zinc-800 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-colors active:scale-98"
+        >
+          <RefreshCw className="w-4 h-4" />
+          <span>Verificar Atualizações & Limpar Cache</span>
+        </button>
+        <p className="text-[10px] text-zinc-500 text-center mt-1.5">
+          FITGORDO v1.2 • Clica se notares conteúdo em cache antigo
+        </p>
       </div>
     </div>
   );

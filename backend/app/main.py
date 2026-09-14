@@ -59,6 +59,14 @@ if os.path.exists(static_dir):
             return None
         file_path = os.path.join(static_dir, full_path)
         if os.path.exists(file_path) and os.path.isfile(file_path):
-            return FileResponse(file_path)
-        return FileResponse(os.path.join(static_dir, "index.html"))
+            headers = {}
+            # Service workers and manifests must never be cached
+            if "sw.js" in full_path or "registerSW" in full_path or full_path.endswith(".webmanifest"):
+                headers = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+            return FileResponse(file_path, headers=headers)
+        # index.html must always be fresh so users immediately receive new deployments
+        return FileResponse(
+            os.path.join(static_dir, "index.html"),
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+        )
 

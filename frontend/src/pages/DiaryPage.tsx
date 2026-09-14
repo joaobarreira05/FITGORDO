@@ -67,7 +67,12 @@ export const DiaryPage: React.FC<DiaryPageProps> = ({ onOpenQuickAdd }) => {
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
 
   return (
-    <div className="space-y-5 pb-24 animate-in fade-in duration-300">
+    <div className="space-y-4 pb-24 animate-in fade-in duration-300">
+      <div>
+        <h2 className="text-2xl font-black text-white tracking-tight">Diário Alimentar</h2>
+        <p className="text-xs text-zinc-400 font-medium">Registo diário de refeições e calorias</p>
+      </div>
+
       {/* Date Navigator Header */}
       <div className="flex items-center justify-between bg-zinc-900 border border-zinc-800 p-2.5 rounded-2xl">
         <button
