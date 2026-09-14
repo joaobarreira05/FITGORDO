@@ -85,11 +85,12 @@ export const api = {
   getMe: () => request<User>('/auth/me'),
 
   // Products & Barcode
-  getProducts: async (search?: string, favorite?: boolean) => {
+  getProducts: async (search?: string, favorite?: boolean, limit?: number): Promise<Product[]> => {
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (favorite !== undefined) params.append('favorite', String(favorite));
+      if (limit !== undefined) params.append('limit', String(limit));
       const query = params.toString() ? `?${params.toString()}` : '';
       const products = await request<Product[]>(`/products${query}`);
       products.forEach(p => offlineCache.saveProduct(p));

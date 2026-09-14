@@ -7,9 +7,10 @@ export const CreateCustomProductPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const defaultBarcode = searchParams.get('barcode') || '';
+  const defaultName = searchParams.get('name') || '';
 
   const [formData, setFormData] = useState({
-    name: '',
+    name: defaultName,
     brand: '',
     barcode: defaultBarcode,
     image_url: '',
@@ -61,7 +62,12 @@ export const CreateCustomProductPage: React.FC = () => {
         source: 'custom',
       });
 
-      navigate(`/products/${created.id}`);
+      const returnTo = searchParams.get('returnTo');
+      if (returnTo) {
+        navigate(returnTo);
+      } else {
+        navigate(`/products/${created.id}`);
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Erro ao guardar produto.');
     } finally {

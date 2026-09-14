@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
+import { offlineCache } from '../services/offlineCache';
 import { Meal, Product } from '../types';
 import { Plus, Utensils, Trash2, Check, AlertTriangle, Search, X, Calendar } from 'lucide-react';
 
@@ -19,6 +20,7 @@ export const MealsPage: React.FC = () => {
   const [mealName, setMealName] = useState('');
   const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
   const [ingredientSearch, setIngredientSearch] = useState('');
+  const [searchingIngredients, setSearchingIngredients] = useState(false);
   const [selectedItems, setSelectedItems] = useState<{ product_id: number; quantity: number; unit: string }[]>([]);
   const navigate = useNavigate();
 
@@ -38,6 +40,13 @@ export const MealsPage: React.FC = () => {
     loadProducts();
   }, []);
 
+  // When opening create modal, refresh products to get any newly created foods
+  useEffect(() => {
+    if (showCreateModal) {
+      loadProducts();
+    }
+  }, [showCreateModal]);
+
   const loadMeals = async () => {
     setLoading(true);
     setErrorState(null);
@@ -54,12 +63,64 @@ export const MealsPage: React.FC = () => {
 
   const loadProducts = async () => {
     try {
-      const prods = await api.getProducts();
-      setAvailableProducts(Array.isArray(prods) ? prods : []);
+      const prods = await api.getProducts('', undefined, 100);
+      const cached = offlineCache.getProducts();
+      const map = new Map<number, Product>();
+      cached.forEach(p => map.set(p.id, p));
+      (Array.isArray(prods) ? prods : []).forEach(p => map.set(p.id, p));
+
+      const combined = Array.from(map.values());
+      // Sort custom products first so user foods are immediately accessible
+      combined.sort((a, b) => {
+        if (a.source === 'custom' && b.source !== 'custom') return -1;
+        if (b.source === 'custom' && a.source !== 'custom') return 1;
+        return a.name.localeCompare(b.name);
+      });
+      setAvailableProducts(combined);
     } catch (e) {
       console.warn('Error loading products for meal picker:', e);
+      setAvailableProducts(offlineCache.getProducts());
     }
   };
+
+  // Live search backend and offline cache when typing in modal
+  useEffect(() => {
+    if (!showCreateModal) return;
+    const term = ingredientSearch.trim();
+    if (!term) {
+      loadProducts();
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearchingIngredients(true);
+      try {
+        const prods = await api.getProducts(term, undefined, 50);
+        const termLower = term.toLowerCase();
+        const cachedMatches = offlineCache.getProducts().filter(p =>
+          p.name.toLowerCase().includes(termLower) ||
+          (p.brand && p.brand.toLowerCase().includes(termLower)) ||
+          p.barcode === term
+        );
+        const map = new Map<number, Product>();
+        cachedMatches.forEach(p => map.set(p.id, p));
+        (Array.isArray(prods) ? prods : []).forEach(p => map.set(p.id, p));
+
+        const combined = Array.from(map.values());
+        combined.sort((a, b) => {
+          if (a.source === 'custom' && b.source !== 'custom') return -1;
+          if (b.source === 'custom' && a.source !== 'custom') return 1;
+          return a.name.localeCompare(b.name);
+        });
+        setAvailableProducts(combined);
+      } catch (err) {
+        console.warn('Error searching ingredients:', err);
+      } finally {
+        setSearchingIngredients(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [ingredientSearch, showCreateModal]);
 
   const handleConfirmAddToDiary = async (meal: Meal, mealType: string) => {
     setAddingId(meal.id);
@@ -132,13 +193,14 @@ export const MealsPage: React.FC = () => {
   // Filter available products by search term
   const filteredProducts = useMemo(() => {
     if (!ingredientSearch.trim()) {
-      return availableProducts.slice(0, 15);
+      return availableProducts.slice(0, 25);
     }
     const q = ingredientSearch.toLowerCase().trim();
     return availableProducts.filter(p => 
       p.name.toLowerCase().includes(q) || 
-      (p.brand && p.brand.toLowerCase().includes(q))
-    ).slice(0, 20);
+      (p.brand && p.brand.toLowerCase().includes(q)) ||
+      p.barcode === ingredientSearch.trim()
+    ).slice(0, 35);
   }, [availableProducts, ingredientSearch]);
 
   return (
@@ -338,29 +400,41 @@ export const MealsPage: React.FC = () => {
 
               {/* Searchable Ingredient Picker */}
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-zinc-300 block">Pesquisar e Adicionar Alimentos</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-zinc-300">Pesquisar e Adicionar Alimentos</label>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/products/new?returnTo=/meals')}
+                    className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 hover:underline"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Criar novo alimento</span>
+                  </button>
+                </div>
                 <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-zinc-500" />
                   <input
                     type="text"
-                    placeholder="Pesquisar alimento por nome ou marca..."
+                    placeholder="Pesquisar por nome, marca ou alimento criado..."
                     value={ingredientSearch}
                     onChange={(e) => setIngredientSearch(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-9 pr-9 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500"
                   />
-                  {ingredientSearch && (
+                  {searchingIngredients ? (
+                    <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin absolute right-3 top-3" />
+                  ) : ingredientSearch ? (
                     <button
                       type="button"
                       onClick={() => setIngredientSearch('')}
-                      className="absolute right-3 top-2.5 text-zinc-500 hover:text-white"
+                      className="absolute right-3 top-3 text-zinc-500 hover:text-white"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
-                  )}
+                  ) : null}
                 </div>
 
                 {/* Filtered suggestions list */}
-                <div className="max-h-40 overflow-y-auto divide-y divide-zinc-800/50 rounded-xl bg-zinc-950 border border-zinc-800/80">
+                <div className="max-h-48 overflow-y-auto divide-y divide-zinc-800/50 rounded-xl bg-zinc-950 border border-zinc-800/80">
                   {filteredProducts.length > 0 ? (
                     filteredProducts.map((p) => (
                       <div
@@ -369,23 +443,39 @@ export const MealsPage: React.FC = () => {
                         className="p-2.5 flex items-center justify-between hover:bg-zinc-800/60 cursor-pointer transition-colors text-xs"
                       >
                         <div className="min-w-0 flex-1 pr-2">
-                          <p className="font-semibold text-zinc-200 truncate">{p.name}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-semibold text-zinc-200 truncate">{p.name}</p>
+                            {p.source === 'custom' && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0">
+                                Criado por ti
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[10px] text-zinc-500">
                             {p.brand || 'Genérico'} • {p.calories_per_100 ?? '--'} kcal/100g
                           </p>
                         </div>
                         <button
                           type="button"
-                          className="shrink-0 p-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"
+                          className="shrink-0 p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"
                         >
                           <Plus className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     ))
                   ) : (
-                    <p className="p-3 text-center text-xs text-zinc-500">
-                      Nenhum alimento encontrado com "{ingredientSearch}"
-                    </p>
+                    <div className="p-4 text-center space-y-2">
+                      <p className="text-xs text-zinc-400">
+                        Nenhum alimento encontrado com "{ingredientSearch}"
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/products/new?returnTo=/meals&name=${encodeURIComponent(ingredientSearch)}`)}
+                        className="text-xs font-bold text-emerald-400 hover:underline"
+                      >
+                        + Criar "{ingredientSearch}" agora
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

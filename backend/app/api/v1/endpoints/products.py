@@ -15,7 +15,7 @@ def get_products(
     search: Optional[str] = None,
     favorite: Optional[bool] = None,
     source: Optional[str] = None,
-    limit: int = 50,
+    limit: int = 100,
     offset: int = 0,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional)
@@ -38,7 +38,9 @@ def get_products(
     if source:
         query = query.filter(Product.source == source)
 
-    query = query.order_by(Product.updated_at.desc())
+    from sqlalchemy import case
+    is_custom = case((Product.source == "custom", 1), else_=0)
+    query = query.order_by(is_custom.desc(), Product.updated_at.desc(), Product.id.desc())
     return query.offset(offset).limit(limit).all()
 
 @router.get("/barcode/{barcode}", response_model=ProductResponse)
