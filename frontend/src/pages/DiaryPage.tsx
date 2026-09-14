@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { offlineCache } from '../services/offlineCache';
 import { DailySummary, FoodEntry } from '../types';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Trash2, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Calendar as CalendarIcon, Trash2, Plus } from 'lucide-react';
 
 interface DiaryPageProps {
   onOpenQuickAdd: (mealType?: string) => void;
@@ -14,6 +14,20 @@ export const DiaryPage: React.FC<DiaryPageProps> = ({ onOpenQuickAdd }) => {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [summary, setSummary] = useState<DailySummary | null>(() => offlineCache.getDiary(new Date().toISOString().split('T')[0]));
   const [loading, setLoading] = useState(!summary);
+  const [openMeals, setOpenMeals] = useState<Record<string, boolean>>({
+    'Pequeno-almoço': true,
+    'Almoço': true,
+    'Lanche': true,
+    'Jantar': true,
+    'Snacks': true,
+  });
+
+  const toggleMealAccordion = (mealType: string) => {
+    setOpenMeals(prev => ({
+      ...prev,
+      [mealType]: !prev[mealType]
+    }));
+  };
 
   useEffect(() => {
     loadDiaryData(selectedDate);
@@ -121,66 +135,121 @@ export const DiaryPage: React.FC<DiaryPageProps> = ({ onOpenQuickAdd }) => {
         </div>
       )}
 
-      {/* Meals Sections */}
-      <div className="space-y-4">
+      {/* Meals Sections Accordions */}
+      <div className="space-y-3">
         {MEAL_TYPES.map((mealType) => {
           const entriesForMeal = summary?.entries?.filter(e => e.meal_type === mealType) || [];
           const mealCalories = entriesForMeal.reduce((acc, curr) => acc + (curr.nutrition.calories || 0), 0);
           const mealProtein = entriesForMeal.reduce((acc, curr) => acc + (curr.nutrition.protein || 0), 0);
           const mealCarbs = entriesForMeal.reduce((acc, curr) => acc + (curr.nutrition.carbs || 0), 0);
           const mealFat = entriesForMeal.reduce((acc, curr) => acc + (curr.nutrition.fat || 0), 0);
+          const isOpen = openMeals[mealType] ?? true;
 
           return (
-            <div key={mealType} className="bg-zinc-900/70 border border-zinc-800/70 rounded-2xl overflow-hidden">
-              {/* Meal Section Header */}
-              <div className="flex items-center justify-between p-3.5 bg-zinc-800/40 border-b border-zinc-800/60">
-                <div>
-                  <h3 className="text-sm font-bold text-white">{mealType}</h3>
-                  <p className="text-[11px] text-zinc-400 font-mono">
-                    {Math.round(mealCalories)} kcal • P: {Math.round(mealProtein)}g • H: {Math.round(mealCarbs)}g • G: {Math.round(mealFat)}g
-                  </p>
+            <div 
+              key={mealType} 
+              className="bg-zinc-900/70 border border-zinc-800/80 rounded-2xl overflow-hidden transition-colors"
+            >
+              {/* Meal Section Accordion Header */}
+              <div 
+                onClick={() => toggleMealAccordion(mealType)}
+                className="flex items-center justify-between p-3.5 bg-zinc-800/40 hover:bg-zinc-800/60 cursor-pointer select-none transition-colors border-b border-zinc-800/40"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`p-1 rounded-lg bg-zinc-800 text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-emerald-400 bg-emerald-500/10' : ''}`}>
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-white truncate">{mealType}</h3>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-mono shrink-0">
+                        {entriesForMeal.length} {entriesForMeal.length === 1 ? 'item' : 'itens'}
+                      </span>
+                    </div>
+                    {!isOpen && entriesForMeal.length > 0 && (
+                      <p className="text-[11px] text-zinc-400 font-mono mt-0.5 truncate">
+                        {Math.round(mealCalories)} kcal • P: {Math.round(mealProtein * 10) / 10}g • H: {Math.round(mealCarbs * 10) / 10}g • G: {Math.round(mealFat * 10) / 10}g
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <button
-                  onClick={() => onOpenQuickAdd(mealType)}
-                  className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 rounded-lg transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Adicionar</span>
-                </button>
+
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenQuickAdd(mealType);
+                    }}
+                    className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1.5 rounded-lg transition-colors active:scale-95"
+                    title={`Adicionar alimento a ${mealType}`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Adicionar</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Items List */}
-              <div className="divide-y divide-zinc-800/40">
-                {entriesForMeal.length > 0 ? (
-                  entriesForMeal.map((entry) => (
-                    <div key={entry.id} className="flex items-center justify-between p-3 hover:bg-zinc-800/30 transition-colors">
-                      <div className="min-w-0 flex-1 pr-2">
-                        <h4 className="text-xs font-semibold text-zinc-100 truncate">{entry.product.name}</h4>
-                        <p className="text-[11px] text-zinc-400 font-mono">
-                          {entry.quantity} {entry.unit} • {entry.nutrition.calories ?? '--'} kcal
-                        </p>
-                      </div>
+              {/* Accordion Content */}
+              {isOpen && (
+                <div>
+                  {/* Items List */}
+                  <div className="divide-y divide-zinc-800/40">
+                    {entriesForMeal.length > 0 ? (
+                      entriesForMeal.map((entry) => (
+                        <div key={entry.id} className="flex items-center justify-between p-3 hover:bg-zinc-800/30 transition-colors">
+                          <div className="min-w-0 flex-1 pr-2">
+                            <h4 className="text-xs font-semibold text-zinc-100 truncate">{entry.product.name}</h4>
+                            <p className="text-[11px] text-zinc-400 font-mono">
+                              {entry.quantity} {entry.unit} • {entry.nutrition.calories ?? '--'} kcal
+                            </p>
+                          </div>
 
-                      <div className="flex items-center gap-3">
-                        <div className="text-right text-[11px] font-mono text-zinc-400">
-                          <span className="text-blue-400 font-bold">{entry.nutrition.protein ?? 0}g</span> P
+                          <div className="flex items-center gap-3">
+                            <div className="text-right text-[11px] font-mono text-zinc-400">
+                              <span className="text-blue-400 font-bold">{entry.nutrition.protein ?? 0}g</span> P
+                            </div>
+                            <button
+                              onClick={() => handleDeleteEntry(entry.id)}
+                              className="p-1.5 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors"
+                              title="Remover item"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          onClick={() => handleDeleteEntry(entry.id)}
-                          className="p-1.5 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors"
-                          title="Remover"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      ))
+                    ) : (
+                      <div className="p-3.5 text-center text-xs text-zinc-500">
+                        Sem alimentos nesta refeição. Clica em "Adicionar" para registar.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Accordion Footer: Macronutrient Totals for this specific meal */}
+                  {entriesForMeal.length > 0 && (
+                    <div className="bg-zinc-950/80 p-3 border-t border-zinc-800/60 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+                      <span className="text-zinc-400 font-sans text-[11px] font-semibold uppercase tracking-wider">
+                        Total {mealType}:
+                      </span>
+                      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                        <span className="text-amber-400 font-bold">
+                          {Math.round(mealCalories)} <span className="text-[10px] text-zinc-500 font-normal">kcal</span>
+                        </span>
+                        <span className="text-blue-400 font-semibold">
+                          {Math.round(mealProtein * 10) / 10}g <span className="text-[10px] text-zinc-500 font-normal">P</span>
+                        </span>
+                        <span className="text-emerald-400 font-semibold">
+                          {Math.round(mealCarbs * 10) / 10}g <span className="text-[10px] text-zinc-500 font-normal">H</span>
+                        </span>
+                        <span className="text-purple-400 font-semibold">
+                          {Math.round(mealFat * 10) / 10}g <span className="text-[10px] text-zinc-500 font-normal">G</span>
+                        </span>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="p-3 text-center text-xs text-zinc-500">
-                    Sem alimentos nesta refeição.
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
