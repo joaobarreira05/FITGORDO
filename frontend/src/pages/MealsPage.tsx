@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { Meal, Product } from '../types';
-import { Plus, Utensils, Trash2, Check, AlertTriangle } from 'lucide-react';
+import { Plus, Utensils, Trash2, Check, AlertTriangle, Search, X, Calendar } from 'lucide-react';
+
+const MEAL_TYPES = ['Pequeno-almoço', 'Almoço', 'Lanche', 'Jantar', 'Snacks'];
 
 export const MealsPage: React.FC = () => {
   const [meals, setMeals] = useState<Meal[]>([]);
@@ -10,13 +12,26 @@ export const MealsPage: React.FC = () => {
   const [addingId, setAddingId] = useState<number | null>(null);
   const [successId, setSuccessId] = useState<number | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [targetMealModal, setTargetMealModal] = useState<Meal | null>(null);
   const [errorState, setErrorState] = useState<string | null>(null);
 
   // New Meal Form State
   const [mealName, setMealName] = useState('');
   const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
+  const [ingredientSearch, setIngredientSearch] = useState('');
   const [selectedItems, setSelectedItems] = useState<{ product_id: number; quantity: number; unit: string }[]>([]);
   const navigate = useNavigate();
+
+  // Prevent background scrolling when modals are open
+  useEffect(() => {
+    if (showCreateModal || targetMealModal) {
+      const origOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = origOverflow;
+      };
+    }
+  }, [showCreateModal, targetMealModal]);
 
   useEffect(() => {
     loadMeals();
@@ -41,14 +56,17 @@ export const MealsPage: React.FC = () => {
     try {
       const prods = await api.getProducts();
       setAvailableProducts(Array.isArray(prods) ? prods : []);
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Error loading products for meal picker:', e);
+    }
   };
 
-  const handleAddMealToDiary = async (mealId: number) => {
-    setAddingId(mealId);
+  const handleConfirmAddToDiary = async (meal: Meal, mealType: string) => {
+    setAddingId(meal.id);
     try {
-      await api.addMealToDiary(mealId, 'Almoço');
-      setSuccessId(mealId);
+      await api.addMealToDiary(meal.id, mealType);
+      setSuccessId(meal.id);
+      setTargetMealModal(null);
       setTimeout(() => {
         setSuccessId(null);
         navigate('/diary');
@@ -84,19 +102,44 @@ export const MealsPage: React.FC = () => {
       setShowCreateModal(false);
       setMealName('');
       setSelectedItems([]);
+      setIngredientSearch('');
     } catch (err) {
       alert('Erro ao criar refeição.');
     }
   };
 
-  const addItemToMeal = (productId: number) => {
-    const prod = availableProducts.find(p => p.id === productId);
-    if (!prod) return;
-    setSelectedItems([
-      ...selectedItems,
-      { product_id: productId, quantity: prod.serving_size || 100, unit: prod.serving_unit || 'g' }
-    ]);
+  const addItemToMeal = (product: Product) => {
+    const existing = selectedItems.find(it => it.product_id === product.id);
+    if (existing) {
+      setSelectedItems(prev => prev.map(it => 
+        it.product_id === product.id 
+          ? { ...it, quantity: it.quantity + (product.serving_size || 50) } 
+          : it
+      ));
+    } else {
+      setSelectedItems([
+        ...selectedItems,
+        { 
+          product_id: product.id, 
+          quantity: product.serving_size || 100, 
+          unit: product.serving_unit || 'g' 
+        }
+      ]);
+    }
+    setIngredientSearch('');
   };
+
+  // Filter available products by search term
+  const filteredProducts = useMemo(() => {
+    if (!ingredientSearch.trim()) {
+      return availableProducts.slice(0, 15);
+    }
+    const q = ingredientSearch.toLowerCase().trim();
+    return availableProducts.filter(p => 
+      p.name.toLowerCase().includes(q) || 
+      (p.brand && p.brand.toLowerCase().includes(q))
+    ).slice(0, 20);
+  }, [availableProducts, ingredientSearch]);
 
   return (
     <div className="space-y-4 pb-28 animate-in fade-in duration-300">
@@ -104,11 +147,11 @@ export const MealsPage: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-white tracking-tight">Refeições Guardadas</h2>
-          <p className="text-xs text-zinc-400">Combinações prontas para registo em 1 clique</p>
+          <p className="text-xs text-zinc-400">Combinações prontas para registo no diário</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-1 text-xs font-bold bg-emerald-500 hover:bg-emerald-600 text-zinc-950 px-3.5 py-2 rounded-full transition-colors shadow-md shadow-emerald-500/20"
+          className="flex items-center gap-1 text-xs font-bold bg-emerald-500 hover:bg-emerald-600 text-zinc-950 px-3.5 py-2 rounded-full transition-colors shadow-md shadow-emerald-500/20 active:scale-95"
         >
           <Plus className="w-4 h-4 stroke-[3]" />
           <span>Criar Refeição</span>
@@ -153,6 +196,7 @@ export const MealsPage: React.FC = () => {
                   <button
                     onClick={() => handleDeleteMeal(meal.id)}
                     className="p-1.5 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors"
+                    title="Eliminar refeição"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -180,11 +224,11 @@ export const MealsPage: React.FC = () => {
                   ))}
                 </div>
 
-                {/* Add Meal to Diary Action */}
+                {/* Add Meal to Diary Action (Opens Slot Picker) */}
                 <button
-                  onClick={() => handleAddMealToDiary(meal.id)}
+                  onClick={() => setTargetMealModal(meal)}
                   disabled={addingId === meal.id || successId === meal.id}
-                  className="w-full py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  className="w-full py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors active:scale-95"
                 >
                   {successId === meal.id ? (
                     <>
@@ -212,82 +256,205 @@ export const MealsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Create Meal Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-3xl p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+      {/* Target Meal Slot Modal (Choose Breakfast, Lunch, Dinner...) */}
+      {targetMealModal && (
+        <div 
+          onClick={() => setTargetMealModal(null)}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-3xl p-5 space-y-4 shadow-2xl"
+          >
             <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white">Nova Refeição Guardada</h3>
-              <button onClick={() => setShowCreateModal(false)} className="text-zinc-400 hover:text-white text-sm">✕</button>
+              <div>
+                <h3 className="text-sm font-bold text-white">Adicionar ao Diário</h3>
+                <p className="text-xs text-zinc-400 truncate max-w-[240px]">{targetMealModal.name}</p>
+              </div>
+              <button 
+                onClick={() => setTargetMealModal(null)} 
+                className="p-1.5 text-zinc-400 hover:text-white rounded-full bg-zinc-800/80 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-zinc-300 font-medium">Em qual refeição pretendes registar?</p>
+
+            <div className="grid grid-cols-1 gap-2">
+              {MEAL_TYPES.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => handleConfirmAddToDiary(targetMealModal, type)}
+                  disabled={addingId === targetMealModal.id}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-emerald-500/20 hover:text-emerald-400 hover:border-emerald-500/40 border border-zinc-700/60 text-xs font-bold text-left flex items-center justify-between transition-colors active:scale-[0.98]"
+                >
+                  <span>{type}</span>
+                  <Plus className="w-3.5 h-3.5 opacity-60" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Meal Modal with Searchable Ingredients */}
+      {showCreateModal && (
+        <div 
+          onClick={() => setShowCreateModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-3xl p-5 space-y-4 max-h-[88vh] overflow-y-auto shadow-2xl"
+          >
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-bold text-white">Nova Refeição Guardada</h3>
+                <p className="text-xs text-zinc-400">Junta alimentos e cria uma refeição pré-feita</p>
+              </div>
+              <button 
+                onClick={() => setShowCreateModal(false)} 
+                className="p-1.5 text-zinc-400 hover:text-white rounded-full bg-zinc-800/80 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <form onSubmit={handleCreateMeal} className="space-y-4">
               <div>
-                <label className="text-xs text-zinc-400 block mb-1">Nome da Refeição *</label>
+                <label className="text-xs font-semibold text-zinc-300 block mb-1">Nome da Refeição *</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Pequeno-almoço Habitual"
+                  placeholder="Ex: Pequeno-almoço habitual, Batido pós-treino"
                   value={mealName}
                   onChange={(e) => setMealName(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              {/* Add Ingredient Picker */}
-              <div>
-                <label className="text-xs text-zinc-400 block mb-1">Escolher Ingredientes Guardados</label>
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      addItemToMeal(parseInt(e.target.value, 10));
-                      e.target.value = '';
-                    }
-                  }}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="">-- Selecionar Alimento --</option>
-                  {availableProducts.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} ({p.brand || 'Genérico'})</option>
-                  ))}
-                </select>
+              {/* Searchable Ingredient Picker */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-300 block">Pesquisar e Adicionar Alimentos</label>
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar alimento por nome ou marca..."
+                    value={ingredientSearch}
+                    onChange={(e) => setIngredientSearch(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500"
+                  />
+                  {ingredientSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setIngredientSearch('')}
+                      className="absolute right-3 top-2.5 text-zinc-500 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filtered suggestions list */}
+                <div className="max-h-40 overflow-y-auto divide-y divide-zinc-800/50 rounded-xl bg-zinc-950 border border-zinc-800/80">
+                  {filteredProducts.length > 0 ? (
+                    filteredProducts.map((p) => (
+                      <div
+                        key={p.id}
+                        onClick={() => addItemToMeal(p)}
+                        className="p-2.5 flex items-center justify-between hover:bg-zinc-800/60 cursor-pointer transition-colors text-xs"
+                      >
+                        <div className="min-w-0 flex-1 pr-2">
+                          <p className="font-semibold text-zinc-200 truncate">{p.name}</p>
+                          <p className="text-[10px] text-zinc-500">
+                            {p.brand || 'Genérico'} • {p.calories_per_100 ?? '--'} kcal/100g
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="shrink-0 p-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="p-3 text-center text-xs text-zinc-500">
+                      Nenhum alimento encontrado com "{ingredientSearch}"
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Selected Ingredients List */}
               <div className="space-y-2">
-                <h4 className="text-xs font-bold text-zinc-300">Ingredientes Selecionados ({selectedItems.length})</h4>
-                {selectedItems.map((item, idx) => {
-                  const p = availableProducts.find(prod => prod.id === item.product_id);
-                  return (
-                    <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs">
-                      <span className="text-white truncate flex-1 pr-2">{p?.name || 'Alimento'}</span>
-                      <input
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setSelectedItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: val } : it));
-                        }}
-                        className="w-16 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-center text-white font-mono mr-2"
-                      />
-                      <span className="text-zinc-400 mr-2">{item.unit}</span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedItems(prev => prev.filter((_, i) => i !== idx))}
-                        className="text-red-400 font-bold px-1"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  );
-                })}
+                <div className="flex justify-between items-center">
+                  <h4 className="text-xs font-bold text-zinc-300">
+                    Ingredientes Escolhidos ({selectedItems.length})
+                  </h4>
+                  {selectedItems.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedItems([])}
+                      className="text-[10px] text-zinc-500 hover:text-red-400"
+                    >
+                      Limpar todos
+                    </button>
+                  )}
+                </div>
+
+                {selectedItems.length === 0 ? (
+                  <p className="text-xs text-zinc-500 italic p-2 bg-zinc-950 rounded-xl border border-zinc-800/50 text-center">
+                    Pesquisa e clica num alimento acima para adicionar.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                    {selectedItems.map((item, idx) => {
+                      const p = availableProducts.find(prod => prod.id === item.product_id);
+                      return (
+                        <div 
+                          key={idx} 
+                          className="flex items-center justify-between p-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs"
+                        >
+                          <span className="text-white truncate flex-1 pr-2 font-medium">
+                            {p?.name || 'Alimento'}
+                          </span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setSelectedItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: val } : it));
+                            }}
+                            className="w-16 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-center text-white font-mono mr-2 focus:outline-none focus:border-emerald-500"
+                          />
+                          <span className="text-zinc-400 mr-2 text-[11px] font-mono">{item.unit}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedItems(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-zinc-500 hover:text-red-400 font-bold p-1"
+                            title="Remover ingrediente"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-xs rounded-xl transition-colors"
+                disabled={selectedItems.length === 0 || !mealName.trim()}
+                className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-bold text-xs rounded-xl transition-colors shadow-lg shadow-emerald-500/20 active:scale-95"
               >
-                Guardar Refeição
+                Guardar Refeição ({selectedItems.length} ingredientes)
               </button>
             </form>
           </div>

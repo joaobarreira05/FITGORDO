@@ -53,13 +53,13 @@ _OFF_SEARCH_FIELDS = (
     "brands,quantity,nutriments,image_url"
 )
 
-# Timeout for all external HTTP calls
-_TIMEOUT = 8.0
+# Timeout for all external HTTP calls (fast timeout prevents UI blocking)
+_TIMEOUT = 3.5
 
 # Retry config for transient errors (429, 502, 503, 504)
 _RETRY_STATUSES = {429, 502, 503, 504}
-_MAX_RETRIES = 2
-_RETRY_BACKOFF = [1.0, 2.5]  # seconds between retries
+_MAX_RETRIES = 1
+_RETRY_BACKOFF = [0.4]  # minimal fast backoff
 
 
 # ─────────────────────────────────────────────
@@ -68,7 +68,7 @@ _RETRY_BACKOFF = [1.0, 2.5]  # seconds between retries
 
 def _safe_get(url: str, headers: dict, params: Optional[dict] = None) -> Optional[dict]:
     """
-    GET with retry/backoff for transient errors.
+    Fast GET with single quick retry for transient errors.
     Returns parsed JSON dict or None on any failure.
     """
     for attempt in range(_MAX_RETRIES + 1):
@@ -94,10 +94,10 @@ def _safe_get(url: str, headers: dict, params: Optional[dict] = None) -> Optiona
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
             if attempt < _MAX_RETRIES:
                 wait = _RETRY_BACKOFF[attempt]
-                logger.warning(f"[OFF] Network error ({exc}). Retrying in {wait}s…")
+                logger.warning(f"[OFF] Network error ({exc}). Quick retrying in {wait}s…")
                 time.sleep(wait)
             else:
-                logger.error(f"[OFF] Failed after {_MAX_RETRIES} retries: {exc}")
+                logger.warning(f"[OFF] Failed: {exc}")
                 return None
 
     return None
@@ -161,9 +161,16 @@ class ProductService:
                 logger.info(f"[Cache HIT] barcode={var}")
                 return local
 
-        # 2 & 3. Open Food Facts — pt subdomain first, then world
+        # 2 & 3. Open Food Facts — query top canonical variants (max 2 external requests)
         logger.info(f"[Cache MISS] barcode={clean} — querying Open Food Facts…")
-        for var in variants:
+        # Try the most likely canonical format first (13-digit EAN or clean input)
+        primary_variants = [v for v in variants if len(v) == 13]
+        if not primary_variants:
+            primary_variants = [clean]
+        elif clean not in primary_variants:
+            primary_variants.append(clean)
+
+        for var in primary_variants[:2]:
             product = self._fetch_off_barcode(var)
             if product:
                 return product
@@ -258,12 +265,13 @@ class ProductService:
 
     def _fetch_off_barcode(self, barcode: str) -> Optional[Product]:
         """
-        Tries pt.openfoodfacts.org first (better PT-language data),
-        then falls back to world.openfoodfacts.org.
+        Queries Open Food Facts v2 endpoint.
+        Uses world.openfoodfacts.org first (Cloudflare CDN cache, lowest latency),
+        falling back to pt.openfoodfacts.org if needed.
         """
         endpoints = [
-            f"https://pt.openfoodfacts.org/api/v2/product/{barcode}.json",
             f"https://world.openfoodfacts.org/api/v2/product/{barcode}.json",
+            f"https://pt.openfoodfacts.org/api/v2/product/{barcode}.json",
         ]
 
         for url in endpoints:
@@ -273,7 +281,7 @@ class ProductService:
             if data.get("status") != 1 or "product" not in data:
                 continue
 
-            source_domain = "pt.openfoodfacts" if "pt.openfoodfacts" in url else "openfoodfacts"
+            source_domain = "openfoodfacts" if "world.openfoodfacts" in url else "pt.openfoodfacts"
             logger.info(f"[OFF HIT] barcode={barcode} source={source_domain}")
             return self._create_product_from_off(barcode, data["product"], source=source_domain)
 

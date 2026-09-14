@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QrCode, Search, History, Heart, Utensils, PlusCircle, X } from 'lucide-react';
 
@@ -10,6 +10,16 @@ interface QuickAddModalProps {
 
 export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, mealType = 'Almoço' }) => {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isOpen) {
+      const origOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = origOverflow;
+      };
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -70,8 +80,15 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, m
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-zinc-900 border-t border-zinc-800 rounded-t-3xl p-5 pb-safe-bottom shadow-2xl">
+    <div 
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+    >
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        className="w-full max-w-md bg-zinc-900 border-t border-zinc-800 rounded-t-3xl p-5 pb-safe-bottom shadow-2xl"
+      >
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { offlineCache } from '../services/offlineCache';
 import { DailySummary, FoodEntry } from '../types';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Trash2, Plus } from 'lucide-react';
 
@@ -11,15 +12,14 @@ const MEAL_TYPES = ['Pequeno-almoço', 'Almoço', 'Lanche', 'Jantar', 'Snacks'];
 
 export const DiaryPage: React.FC<DiaryPageProps> = ({ onOpenQuickAdd }) => {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [summary, setSummary] = useState<DailySummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<DailySummary | null>(() => offlineCache.getDiary(new Date().toISOString().split('T')[0]));
+  const [loading, setLoading] = useState(!summary);
 
   useEffect(() => {
     loadDiaryData(selectedDate);
   }, [selectedDate]);
 
   const loadDiaryData = async (dateStr: string) => {
-    setLoading(true);
     try {
       const data = await api.getDiaryByDate(dateStr);
       setSummary(data);
@@ -33,7 +33,10 @@ export const DiaryPage: React.FC<DiaryPageProps> = ({ onOpenQuickAdd }) => {
   const handleDateChange = (offsetDays: number) => {
     const d = new Date(selectedDate);
     d.setDate(d.getDate() + offsetDays);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    const nextDate = d.toISOString().split('T')[0];
+    const cached = offlineCache.getDiary(nextDate);
+    if (cached) setSummary(cached);
+    setSelectedDate(nextDate);
   };
 
   const handleDeleteEntry = async (id: number) => {
@@ -81,8 +84,8 @@ export const DiaryPage: React.FC<DiaryPageProps> = ({ onOpenQuickAdd }) => {
       </div>
 
       {/* Daily Overview Sticky Mini Card */}
-      {summary && (
-        <div className="bg-zinc-900/90 border border-zinc-800/80 p-4 rounded-2xl flex items-center justify-between text-xs">
+      {summary ? (
+        <div className="bg-zinc-900/90 border border-zinc-800/80 p-4 rounded-2xl flex items-center justify-between text-xs min-h-[72px]">
           <div>
             <span className="text-zinc-400 block">Total do Dia</span>
             <strong className="text-amber-400 text-base font-mono font-bold">
@@ -102,6 +105,18 @@ export const DiaryPage: React.FC<DiaryPageProps> = ({ onOpenQuickAdd }) => {
               <span className="text-[10px] text-zinc-500 block">GORD</span>
               <strong className="text-purple-400">{summary.total_fat}g</strong>
             </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-zinc-900/50 border border-zinc-800/50 p-4 rounded-2xl flex items-center justify-between text-xs min-h-[72px] animate-pulse">
+          <div className="space-y-1.5">
+            <div className="h-3 w-16 bg-zinc-800 rounded"></div>
+            <div className="h-5 w-24 bg-zinc-800 rounded"></div>
+          </div>
+          <div className="flex gap-3">
+            <div className="h-7 w-10 bg-zinc-800 rounded"></div>
+            <div className="h-7 w-10 bg-zinc-800 rounded"></div>
+            <div className="h-7 w-10 bg-zinc-800 rounded"></div>
           </div>
         </div>
       )}

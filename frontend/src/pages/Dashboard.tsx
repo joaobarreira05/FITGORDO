@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
+import { offlineCache } from '../services/offlineCache';
 import { DailySummary } from '../types';
 import { MacroProgressBar } from '../components/MacroProgressBar';
 import { Plus, Flame, Dumbbell, Wheat, Droplets, ChevronRight, QrCode } from 'lucide-react';
@@ -10,8 +11,9 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ onOpenQuickAdd }) => {
-  const [summary, setSummary] = useState<DailySummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [summary, setSummary] = useState<DailySummary | null>(() => offlineCache.getDiary(todayStr));
+  const [loading, setLoading] = useState(!summary);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -19,7 +21,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenQuickAdd }) => {
   }, []);
 
   const loadTodayData = async () => {
-    setLoading(true);
     try {
       const data = await api.getTodaySummary();
       setSummary(data);

@@ -92,28 +92,10 @@ export const ScannerPage: React.FC = () => {
         aspectRatio: 1.0,
       };
 
-      // Determine best camera: back/rear camera priority
-      let cameraConstraint: string | { facingMode: string } = { facingMode: "environment" };
-
-      try {
-        const devices = await Html5Qrcode.getCameras();
-        if (devices && devices.length > 0) {
-          const backCam = devices.find(d => 
-            /back|rear|traseira|environment/i.test(d.label)
-          );
-          if (backCam) {
-            cameraConstraint = backCam.id;
-          } else {
-            cameraConstraint = devices.length > 1 ? devices[devices.length - 1].id : devices[0].id;
-          }
-        }
-      } catch {
-        // Camera enumeration not granted yet, fallback to constraint
-      }
-
+      // Use native back camera constraint directly — avoids double permission prompts on iOS Safari
       try {
         await html5QrCode.start(
-          cameraConstraint,
+          { facingMode: "environment" },
           config,
           (decodedText) => {
             handleBarcodeDetected(decodedText);
@@ -121,8 +103,8 @@ export const ScannerPage: React.FC = () => {
           () => {}
         );
       } catch (primaryErr) {
-        console.warn("Primary camera constraint failed, attempting fallback:", primaryErr);
-        // Fallback to user camera or default facing mode
+        console.warn("Back camera constraint failed, attempting default camera:", primaryErr);
+        // Fallback for laptops/desktops with only user-facing webcam
         await html5QrCode.start(
           { facingMode: "user" },
           config,

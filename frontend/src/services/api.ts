@@ -153,7 +153,18 @@ export const api = {
     }
   },
 
-  getTodaySummary: () => request<DailySummary>('/diary/today'),
+  getTodaySummary: async (): Promise<DailySummary> => {
+    const today = new Date().toISOString().split('T')[0];
+    try {
+      const summary = await request<DailySummary>('/diary/today');
+      offlineCache.saveDiary(today, summary);
+      return summary;
+    } catch (e) {
+      const cached = offlineCache.getDiary(today);
+      if (cached) return cached;
+      throw e;
+    }
+  },
 
   addFoodEntry: (meal_type: string, product_id: number, quantity: number, unit: string = 'g', consumed_at?: string) =>
     request<FoodEntry>('/diary', {
